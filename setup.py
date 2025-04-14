@@ -2,7 +2,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='ZCPstates_py',
+    name='ZCPstatespy',
     version='0.1',
     packages=find_packages(),
     description='A custom machine learning visualization toolkit',
