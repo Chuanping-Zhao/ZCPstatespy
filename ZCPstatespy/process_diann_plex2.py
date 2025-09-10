@@ -5,6 +5,7 @@ import os
 import re
 import sys
 import csv
+from typing import Optional
 import numpy as np
 import pandas as pd
 
@@ -14,7 +15,9 @@ import pandas as pd
 RAW_PATH = "report.tsv"                          # DIA-NN 原始 report
 OUT_PATH = "report_plex2_s0s8.tsv"               # 输出路径
 CHANNEL_QVAL_CUTOFF = 0.15                       # Channel.Q.Value 阈值
-RUN_PREFIX = r"20250905_astral_zoom_180spd_7min_200ng_"  # 用于从 Run 中提取后半段
+# 例：自动截到 TEST_Rx 前的固定段，可用正则 r".*?_200ng_"
+RUN_PREFIX: Optional[str] = None                 # 若不想截，设为 None
+RUN_PREFIX_IS_REGEX: bool = False                # 若 RUN_PREFIX 是正则，设为 True
 
 # =========================
 # 工具函数
@@ -59,17 +62,36 @@ def reorder_channel4_after_channel0(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def mutate_run(run_val: str, channel: str, run_prefix: str) -> str:
+def _cut_by_prefix(name: str, run_prefix: str, is_regex: bool) -> str:
+    """根据前缀（字面量或正则）裁剪 name 前缀；失败返回原 name"""
+    if not run_prefix:
+        return name
+    if is_regex:
+        m = re.search(run_prefix, name)
+        return name[m.end():] if m else name
+    # 字面量：用正向后顾
+    m = re.search(rf"(?<={re.escape(run_prefix)}).*", name)
+    return m.group(0) if m else name
+
+
+def mutate_run(run_val: str,
+               channel: str,
+               run_prefix: Optional[str] = None,
+               run_prefix_is_regex: bool = False) -> str:
     """
     重写 Run：
-    - 提取 prefix 后的部分
-    - 加下划线 + channelInfor
+    - 先 basename 去路径，只保留文件名
+    - 若提供 run_prefix：
+        * is_regex=False -> 作为字面量前缀裁剪
+        * is_regex=True  -> 作为正则裁剪（取匹配末尾后的子串）
+      否则不截
+    - 拼接 "_{channel}"
     - 裁掉 R# 后面的尾巴（保留 TEST_R1/2/3）
     """
     if pd.isna(run_val):
         return run_val
-    m = re.search(fr"(?<={re.escape(run_prefix)}).*", run_val)
-    extracted = m.group(0) if m else run_val
+    base = os.path.basename(str(run_val))
+    extracted = _cut_by_prefix(base, run_prefix, run_prefix_is_regex) if run_prefix is not None else base
     extracted = f"{extracted}_{channel}"
     extracted = re.sub(r"(?<=R\d).*", "", extracted)
     return extracted
@@ -96,8 +118,6 @@ def ensure_channel_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 def fill_dimethyl_channels(df: pd.DataFrame) -> pd.DataFrame:
     """补齐 s4 / s8 通道（对称复制赋值）"""
-
-    # 用命名聚合，稳定得到 has0/has4/has8 三列
     presence = (
         df.groupby("Run")
         .agg(
@@ -149,7 +169,8 @@ def process_diann_and_fill_channels(
     input_path: str,
     output_path: str,
     channel_q_cutoff: float = 0.15,
-    run_prefix: str = RUN_PREFIX
+    run_prefix: Optional[str] = RUN_PREFIX,
+    run_prefix_is_regex: bool = RUN_PREFIX_IS_REGEX,
 ) -> pd.DataFrame:
     """
     完整流程：
@@ -171,8 +192,11 @@ def process_diann_and_fill_channels(
         raise ValueError("输入表缺少列：'Channel.Q.Value'。")
     df = df[df["Channel.Q.Value"] <= channel_q_cutoff].copy()
 
-    # 重写 Run 与 File.Name
-    df["Run"] = [mutate_run(r, c, run_prefix) for r, c in zip(df["Run"], df["channelInfor"])]
+    # 重写 Run 与 File.Name（先 basename，再按需裁剪前缀）
+    df["Run"] = [
+        mutate_run(r, c, run_prefix=run_prefix, run_prefix_is_regex=run_prefix_is_regex)
+        for r, c in zip(df["Run"], df["channelInfor"])
+    ]
     df["File.Name"] = df["Run"]
 
     # 按 Run 补通道
@@ -213,6 +237,7 @@ def process_diann_and_fill_channels(
 
     return df
 
+
 # =========================
 # 命令行入口
 # =========================
@@ -223,9 +248,11 @@ if __name__ == "__main__":
         in_path = sys.argv[1]
     if len(sys.argv) >= 3:
         out_path = sys.argv[2]
+    # 例：不同日期 + 相同 200ng 前缀时，用正则更稳
     process_diann_and_fill_channels(
         input_path=in_path,
         output_path=out_path,
         channel_q_cutoff=CHANNEL_QVAL_CUTOFF,
-        run_prefix=RUN_PREFIX
+        run_prefix=RUN_PREFIX,            # None 表示不截
+        run_prefix_is_regex=RUN_PREFIX_IS_REGEX
     )
