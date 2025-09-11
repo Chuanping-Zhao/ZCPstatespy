@@ -163,6 +163,15 @@ def fill_dimethyl_channels(df: pd.DataFrame) -> pd.DataFrame:
     if {"Run", "channelInfor"}.issubset(out.columns):
         out.sort_values(by=["Run", "channelInfor"], inplace=True, kind="mergesort")
     return out
+def read_input_file(input_path: str) -> pd.DataFrame:
+    """支持 .tsv 和 .parquet 输入"""
+    ext = os.path.splitext(input_path)[1].lower()
+    if ext in [".tsv", ".txt"]:
+        return pd.read_csv(input_path, sep="\t", encoding="latin1")
+    elif ext == ".parquet":
+        return pd.read_parquet(input_path)  # 依赖 pyarrow 或 fastparquet
+    else:
+        raise ValueError(f"不支持的文件类型: {ext}")
 
 
 def process_diann_and_fill_channels(
@@ -179,7 +188,7 @@ def process_diann_and_fill_channels(
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"Input file not found: {input_path}")
 
-    df = pd.read_csv(input_path, sep="\t", encoding="latin1")
+    df = read_input_file(input_path)
 
     # 判定通道标签
     df["channelInfor"] = df["Modified.Sequence"].apply(assign_channel_infor)
