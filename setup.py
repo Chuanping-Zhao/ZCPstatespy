@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='ZCPstatespy',
-    version='0.1.1',
+    version='0.1.2',
     packages=find_packages(),
     description='A custom machine learning visualization toolkit',
     author='Chuanping Zhao',
@@ -14,7 +14,8 @@ setup(
         'pandas',
         'seaborn',
         'scikit-learn',
-        'scipy'
+        'scipy',
+        'pyarrow'
     ],
     include_package_data=True,
 )

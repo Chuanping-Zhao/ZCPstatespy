@@ -77,24 +77,19 @@ def _cut_by_prefix(name: str, run_prefix: str, is_regex: bool) -> str:
 def mutate_run(run_val: str,
                channel: str,
                run_prefix: Optional[str] = None,
-               run_prefix_is_regex: bool = False) -> str:
-    """
-    重写 Run：
-    - 先 basename 去路径，只保留文件名
-    - 若提供 run_prefix：
-        * is_regex=False -> 作为字面量前缀裁剪
-        * is_regex=True  -> 作为正则裁剪（取匹配末尾后的子串）
-      否则不截
-    - 拼接 "_{channel}"
-    - 裁掉 R# 后面的尾巴（保留 TEST_R1/2/3）
-    """
+               run_prefix_is_regex: bool = False,
+               add_channel_suffix: bool = False) -> str:
     if pd.isna(run_val):
         return run_val
     base = os.path.basename(str(run_val))
     extracted = _cut_by_prefix(base, run_prefix, run_prefix_is_regex) if run_prefix is not None else base
-    extracted = f"{extracted}_{channel}"
-    extracted = re.sub(r"(?<=R\d).*", "", extracted)
+    if add_channel_suffix:
+        extracted = f"{extracted}_{channel}"
+    # ✅ 只在字符串里确实包含 R+数字 时才截
+    if re.search(r"R\d", extracted):
+        extracted = re.sub(r"(?<=R\d).*", "", extracted)
     return extracted
+
 
 
 def ensure_channel_columns(df: pd.DataFrame) -> pd.DataFrame:
